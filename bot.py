@@ -260,7 +260,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 5. We deliver to your dorm!
 
 🚚 <b>Delivery to your room</b>
-⏰ <b>24/7 Ordering Available</b>
+
 
 <i>Start by tapping '🍽️ Order Food' below!</i>
     """
