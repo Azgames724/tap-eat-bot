@@ -87,29 +87,29 @@ def init_database():
     cursor.execute("SELECT COUNT(*) FROM restaurants")
     if cursor.fetchone()[0] == 0:
         # Add sample restaurants
-        cursor.execute("INSERT INTO restaurants (name) VALUES ('🍕 Pizza Palace')")
-        cursor.execute("INSERT INTO restaurants (name) VALUES ('🍔 Burger Joint')")
-        cursor.execute("INSERT INTO restaurants (name) VALUES ('☕ Coffee Corner')")
+        cursor.execute("INSERT INTO restaurants (name) VALUES ('🍔 Campus food')")
+        cursor.execute("INSERT INTO restaurants (name) VALUES ('🍝 outside food')")
+        cursor.execute("INSERT INTO restaurants (name) VALUES ('☕ Coming soon')")
         cursor.execute("INSERT INTO restaurants (name) VALUES ('🌯 Wrap Station')")
         
         # Get restaurant IDs
-        cursor.execute("SELECT id FROM restaurants WHERE name = '🍕 Pizza Palace'")
+        cursor.execute("SELECT id FROM restaurants WHERE name = '🍔 Campus food'")
         pizza_id = cursor.fetchone()[0]
-        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'Margherita Pizza', 12.99)", (pizza_id,))
-        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'Pepperoni Pizza', 14.99)", (pizza_id,))
-        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'Veggie Pizza', 13.99)", (pizza_id,))
+        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, '🥙 Ertib', 70)", (pizza_id,))
+        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, '🥘 Shiro', 90)", (pizza_id,))
+        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, '🍲 firfir', 90)", (pizza_id,))
         
-        cursor.execute("SELECT id FROM restaurants WHERE name = '🍔 Burger Joint'")
+        cursor.execute("SELECT id FROM restaurants WHERE name = '🍝 outside food'")
         burger_id = cursor.fetchone()[0]
-        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'Cheeseburger', 8.99)", (burger_id,))
-        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'Chicken Burger', 9.99)", (burger_id,))
-        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'Double Burger', 11.99)", (burger_id,))
+        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'soon', soon)", (burger_id,))
+        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'soon', soon)", (burger_id,))
+        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'soon', soon)", (burger_id,))
         
-        cursor.execute("SELECT id FROM restaurants WHERE name = '☕ Coffee Corner'")
+        cursor.execute("SELECT id FROM restaurants WHERE name = '☕ Coming soon")
         coffee_id = cursor.fetchone()[0]
-        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'Cappuccino', 3.99)", (coffee_id,))
-        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'Latte', 4.49)", (coffee_id,))
-        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'Mocha', 4.99)", (coffee_id,))
+        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'soon', soon)", (coffee_id,))
+        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'soon', soon)", (coffee_id,))
+        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'soon', soon)", (coffee_id,))
     
     conn.commit()
     conn.close()
@@ -152,7 +152,7 @@ def format_order_for_admin(order):
 🍽️ <b>{food_name}</b>
 🏪 From: {rest_name}
 🔢 Quantity: {qty}
-💰 Total: ${total:.2f}
+💰 Total: birr{total:.2f}
 
 👤 <b>{customer}</b>
 📞 {phone}
@@ -281,7 +281,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 <b>For Students:</b>
 • Use '🍽️ Order Food' to place orders
-• Update your info in '⚙️ My Info'
+• Update your info in '⚙️ About Me'
 • Check '📋 My Orders' for status
 
 <b>For Admin:</b>
@@ -519,9 +519,9 @@ async def show_order_summary(query, context, user_info):
 
 🏪 Restaurant: {restaurant_name}
 🍽️ Item: {item_name}
-💰 Price: ${price:.2f} each
+💰 Price: birr{price:.2f} each
 🔢 Quantity: {quantity}
-💵 Total: <b>${total:.2f}</b>
+💵 Total: <b>birr{total:.2f}</b>
 
 👤 Customer: {user_info[2]}
 📞 Phone: {user_info[3]}
@@ -659,7 +659,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ✅ <b>Order #{order_id} placed successfully!</b>
 
 📦 Order Code: {order_code}
-💰 Total: ${total:.2f}
+💰 Total: birr{total:.2f}
 ⏰ Status: Pending approval
 
 <i>Admin has been notified. You'll receive updates soon!</i>
@@ -698,9 +698,9 @@ async def show_order_summary_message(update, context, user_info):
 ✅ <b>ORDER SUMMARY</b>
 
 🍽️ Item: {item_name}
-💰 Price: ${price:.2f} each
+💰 Price: birr{price:.2f} each
 🔢 Quantity: {quantity}
-💵 Total: <b>${total:.2f}</b>
+💵 Total: <b>birr{total:.2f}</b>
 
 👤 Customer: {user_info[2]}
 📞 Phone: {user_info[3]}
@@ -865,7 +865,7 @@ async def show_my_orders(query, context):
 {status_emoji} <b>Order #{order_id}</b>
 📦 {code}
 🍽️ {food} (x{qty})
-💰 ${total:.2f}
+💰 birr{total:.2f}
 📊 {status.upper()}
 ⏰ {time[:16]}
 ────────────
@@ -1038,7 +1038,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🏪 Restaurants: {rest_count}
 📦 Total Orders: {order_count}
 ⏳ Pending Orders: {pending_count}
-💰 Total Revenue: ${revenue:.2f}
+💰 Total Revenue: birr{revenue:.2f}
 
 <i>Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M')}</i>
     """
