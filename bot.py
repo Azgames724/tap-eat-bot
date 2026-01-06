@@ -105,12 +105,7 @@ def init_database():
         cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'two', 2)", (burger_id,))
         cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'four ', 3)", (burger_id,))
         
-        cursor.execute("SELECT id FROM restaurants WHERE name = '☕ Coming")
-        coffee_id = cursor.fetchone()[0]
-        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'five ', 5)", (coffee_id,))
-        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'six', 8)", (coffee_id,))
-        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'seven', 9)", (coffee_id,))
-    
+        
     conn.commit()
     conn.close()
     logger.info("✅ Database initialized")
