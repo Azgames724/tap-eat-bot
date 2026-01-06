@@ -89,7 +89,7 @@ def init_database():
         # Add sample restaurants
         cursor.execute("INSERT INTO restaurants (name) VALUES ('🍔 Campus food')")
         cursor.execute("INSERT INTO restaurants (name) VALUES ('🍝 outside food')")
-        cursor.execute("INSERT INTO restaurants (name) VALUES ('☕ Coming soon')")
+        cursor.execute("INSERT INTO restaurants (name) VALUES ('☕ Coming')")
         cursor.execute("INSERT INTO restaurants (name) VALUES ('🌯 Wrap Station')")
         
         # Get restaurant IDs
@@ -105,7 +105,7 @@ def init_database():
         cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'two', 2)", (burger_id,))
         cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'four ', 3)", (burger_id,))
         
-        cursor.execute("SELECT id FROM restaurants WHERE name = '☕ Coming soon")
+        cursor.execute("SELECT id FROM restaurants WHERE name = '☕ Coming")
         coffee_id = cursor.fetchone()[0]
         cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'five ', 5)", (coffee_id,))
         cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'six', 8)", (coffee_id,))
