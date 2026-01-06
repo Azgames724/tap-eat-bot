@@ -101,15 +101,15 @@ def init_database():
         
         cursor.execute("SELECT id FROM restaurants WHERE name = '🍝 outside food'")
         burger_id = cursor.fetchone()[0]
-        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'soon', soon)", (burger_id,))
-        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'soon', soon)", (burger_id,))
-        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'soon', soon)", (burger_id,))
+        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'soon', 1)", (burger_id,))
+        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'soon', 2)", (burger_id,))
+        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'soon', 3)", (burger_id,))
         
         cursor.execute("SELECT id FROM restaurants WHERE name = '☕ Coming soon")
         coffee_id = cursor.fetchone()[0]
-        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'soon', soon)", (coffee_id,))
-        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'soon', soon)", (coffee_id,))
-        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'soon', soon)", (coffee_id,))
+        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'soon', 5)", (coffee_id,))
+        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'soon', 8)", (coffee_id,))
+        cursor.execute("INSERT INTO menu_items (restaurant_id, name, price) VALUES (?, 'soon', 9)", (coffee_id,))
     
     conn.commit()
     conn.close()
