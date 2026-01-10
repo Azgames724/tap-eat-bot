@@ -5,9 +5,8 @@
   },
   "deploy": {
     "startCommand": "python boot.py",
-    "healthcheckPath": "/",
+    "healthcheckPath": "/health",
     "healthcheckTimeout": 60,
-    "restartPolicyType": "ON_FAILURE",
-    "numReplicas": 1
+    "restartPolicyType": "ON_FAILURE"
   }
 }
