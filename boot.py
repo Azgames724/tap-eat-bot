@@ -9,14 +9,50 @@ from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
     MessageHandler, filters, ContextTypes
 )
-from flask import Flask
+from flask import Flask, Response
 from threading import Thread
-import asyncio
+import time
 
 # ===================== CONFIGURATION =====================
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8367062998:AAF0gmnN5VvLw4Vkosa89O9qK8ogrWmo7so")
-ADMIN_ID = int(os.environ.get("ADMIN_ID", "6237524660"))
+# Get environment variables
+def get_bot_token():
+    """Get and clean bot token from environment"""
+    token = os.environ.get("BOT_TOKEN", "").strip()
+    
+    # Clean the token - remove any quotes, spaces, or equals signs
+    token = token.strip()
+    token = token.strip('"\'')  # Remove quotes
+    token = token.strip('=')    # Remove equals signs
+    token = token.strip()       # Strip again
+    
+    # Debug log (show first and last 5 chars only for security)
+    if token:
+        masked_token = f"{token[:10]}...{token[-5:]}"
+        print(f"🔑 Bot token loaded: {masked_token}")
+        print(f"🔑 Token length: {len(token)}")
+        print(f"🔑 Token starts with: {token[:5]}")
+    
+    return token
+
+def get_admin_id():
+    """Get admin ID from environment"""
+    admin_id = os.environ.get("ADMIN_ID", "").strip()
+    if admin_id:
+        try:
+            return int(admin_id)
+        except ValueError:
+            print(f"⚠️ Invalid ADMIN_ID: {admin_id}, using default")
+    return 6237524660  # Default admin ID
+
+BOT_TOKEN = get_bot_token()
+ADMIN_ID = get_admin_id()
 DATABASE_FILE = "tap_eat.db"
+PORT = int(os.environ.get("PORT", 8080))  # Railway provides PORT
+
+print(f"🚀 Starting TAP&EAT Bot...")
+print(f"👑 Admin ID: {ADMIN_ID}")
+print(f"🌐 Port: {PORT}")
+print(f"📁 Database: {DATABASE_FILE}")
 
 # Setup logging
 logging.basicConfig(
@@ -28,117 +64,122 @@ logger = logging.getLogger(__name__)
 # ===================== DATABASE SETUP =====================
 def init_database():
     """Initialize database with tables"""
-    conn = sqlite3.connect(DATABASE_FILE)
-    cursor = conn.cursor()
-    
-    # Users table
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS users (
-        user_id INTEGER PRIMARY KEY,
-        username TEXT,
-        full_name TEXT,
-        phone TEXT,
-        dorm TEXT,
-        block TEXT,
-        room TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    ''')
-    
-    # Restaurants table
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS restaurants (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT UNIQUE,
-        is_active BOOLEAN DEFAULT 1,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    ''')
-    
-    # Menu items table
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS menu_items (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        restaurant_id INTEGER,
-        name TEXT,
-        price REAL,
-        is_available BOOLEAN DEFAULT 1,
-        FOREIGN KEY (restaurant_id) REFERENCES restaurants(id)
-    )
-    ''')
-    
-    # Orders table
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS orders (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        order_code TEXT UNIQUE,
-        user_id INTEGER,
-        restaurant_name TEXT,
-        food_name TEXT,
-        quantity INTEGER,
-        total_price REAL,
-        customer_name TEXT,
-        phone TEXT,
-        dorm TEXT,
-        block TEXT,
-        room TEXT,
-        status TEXT DEFAULT 'pending',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    ''')
-    
-    # Check if we need sample data
-    cursor.execute("SELECT COUNT(*) FROM restaurants")
-    if cursor.fetchone()[0] == 0:
-        # Add sample restaurants
-        sample_restaurants = [
-            '🍕 Pizza Palace',
-            '🍔 Burger Joint', 
-            '☕ Coffee Corner',
-            '🌯 Wrap Station'
-        ]
+    try:
+        conn = sqlite3.connect(DATABASE_FILE)
+        cursor = conn.cursor()
         
-        for rest in sample_restaurants:
-            cursor.execute("INSERT OR IGNORE INTO restaurants (name) VALUES (?)", (rest,))
+        # Users table
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            username TEXT,
+            full_name TEXT,
+            phone TEXT,
+            dorm TEXT,
+            block TEXT,
+            room TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        ''')
         
-        # Get restaurant IDs and add sample items
-        for rest_name in sample_restaurants:
-            cursor.execute("SELECT id FROM restaurants WHERE name = ?", (rest_name,))
-            rest_id = cursor.fetchone()[0]
+        # Restaurants table
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS restaurants (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE,
+            is_active BOOLEAN DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        ''')
+        
+        # Menu items table
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS menu_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            restaurant_id INTEGER,
+            name TEXT,
+            price REAL,
+            is_available BOOLEAN DEFAULT 1,
+            FOREIGN KEY (restaurant_id) REFERENCES restaurants(id)
+        )
+        ''')
+        
+        # Orders table
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_code TEXT UNIQUE,
+            user_id INTEGER,
+            restaurant_name TEXT,
+            food_name TEXT,
+            quantity INTEGER,
+            total_price REAL,
+            customer_name TEXT,
+            phone TEXT,
+            dorm TEXT,
+            block TEXT,
+            room TEXT,
+            status TEXT DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        ''')
+        
+        # Check if we need sample data
+        cursor.execute("SELECT COUNT(*) FROM restaurants")
+        if cursor.fetchone()[0] == 0:
+            print("📝 Adding sample restaurants and menu items...")
             
-            if rest_name == '🍕 Pizza Palace':
-                items = [
-                    ('Margherita Pizza', 12.99),
-                    ('Pepperoni Pizza', 14.99),
-                    ('Veggie Pizza', 13.99)
-                ]
-            elif rest_name == '🍔 Burger Joint':
-                items = [
-                    ('Cheeseburger', 8.99),
-                    ('Chicken Burger', 9.99),
-                    ('Double Burger', 11.99)
-                ]
-            elif rest_name == '☕ Coffee Corner':
-                items = [
-                    ('Cappuccino', 3.99),
-                    ('Latte', 4.49),
-                    ('Mocha', 4.99)
-                ]
-            else:
-                items = [
-                    ('Chicken Wrap', 7.99),
-                    ('Veggie Wrap', 6.99)
-                ]
+            # Add sample restaurants
+            sample_restaurants = [
+                '🍕 Pizza Palace',
+                '🍔 Burger Joint', 
+                '☕ Coffee Corner',
+                '🌯 Wrap Station'
+            ]
             
-            for item_name, price in items:
-                cursor.execute(
-                    "INSERT OR IGNORE INTO menu_items (restaurant_id, name, price) VALUES (?, ?, ?)",
-                    (rest_id, item_name, price)
-                )
-    
-    conn.commit()
-    conn.close()
-    logger.info("✅ Database initialized")
+            for rest in sample_restaurants:
+                cursor.execute("INSERT OR IGNORE INTO restaurants (name) VALUES (?)", (rest,))
+            
+            # Get restaurant IDs and add sample items
+            for rest_name in sample_restaurants:
+                cursor.execute("SELECT id FROM restaurants WHERE name = ?", (rest_name,))
+                rest_id = cursor.fetchone()[0]
+                
+                if rest_name == '🍕 Pizza Palace':
+                    items = [
+                        ('Margherita Pizza', 12.99),
+                        ('Pepperoni Pizza', 14.99),
+                        ('Veggie Pizza', 13.99)
+                    ]
+                elif rest_name == '🍔 Burger Joint':
+                    items = [
+                        ('Cheeseburger', 8.99),
+                        ('Chicken Burger', 9.99),
+                        ('Double Burger', 11.99)
+                    ]
+                elif rest_name == '☕ Coffee Corner':
+                    items = [
+                        ('Cappuccino', 3.99),
+                        ('Latte', 4.49),
+                        ('Mocha', 4.99)
+                    ]
+                else:
+                    items = [
+                        ('Chicken Wrap', 7.99),
+                        ('Veggie Wrap', 6.99)
+                    ]
+                
+                for item_name, price in items:
+                    cursor.execute(
+                        "INSERT OR IGNORE INTO menu_items (restaurant_id, name, price) VALUES (?, ?, ?)",
+                        (rest_id, item_name, price)
+                    )
+        
+        conn.commit()
+        conn.close()
+        print("✅ Database initialized successfully")
+    except Exception as e:
+        print(f"❌ Database initialization failed: {e}")
 
 # ===================== HELPER FUNCTIONS =====================
 def get_db_connection():
@@ -202,7 +243,6 @@ def admin_keyboard():
     """Create admin panel keyboard"""
     keyboard = [
         [InlineKeyboardButton("📊 View Orders", callback_data='view_orders')],
-        [InlineKeyboardButton("🏪 Manage Restaurants", callback_data='manage_restaurants')],
         [InlineKeyboardButton("📈 Stats", callback_data='stats')],
         [InlineKeyboardButton("🏠 Main Menu", callback_data='back_to_main')]
     ]
@@ -240,12 +280,11 @@ def quantity_keyboard(item_id, restaurant_id):
     """Create quantity selection keyboard"""
     keyboard = []
     row = []
-    for i in range(1, 10):
-        if i <= 5 or i in [8, 10]:
-            row.append(InlineKeyboardButton(str(i), callback_data=f'qty_{item_id}_{i}'))
-            if len(row) == 3:
-                keyboard.append(row)
-                row = []
+    for i in [1, 2, 3, 4, 5, 6, 8, 10]:
+        row.append(InlineKeyboardButton(str(i), callback_data=f'qty_{item_id}_{i}'))
+        if len(row) == 3:
+            keyboard.append(row)
+            row = []
     if row:
         keyboard.append(row)
     keyboard.append([InlineKeyboardButton("🔙 Back", callback_data=f'rest_{restaurant_id}')])
@@ -269,10 +308,6 @@ def confirm_cancel_keyboard():
         [InlineKeyboardButton("❌ Cancel", callback_data='cancel_order')]
     ]
     return InlineKeyboardMarkup(keyboard)
-
-def back_to_main_keyboard(is_admin=False):
-    """Create back to main keyboard"""
-    return InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Main Menu", callback_data='back_to_main')]])
 
 # ===================== COMMAND HANDLERS =====================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -344,112 +379,107 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     is_admin = (user_id == ADMIN_ID)
     
-    # Main menu actions
-    if data == 'order_food':
-        await show_restaurants(query, context)
-    
-    elif data == 'back_to_main':
-        await query.edit_message_text(
-            "🏠 <b>Main Menu</b>",
-            reply_markup=main_menu_keyboard(is_admin),
-            parse_mode='HTML'
-        )
-    
-    elif data == 'my_orders':
-        await show_my_orders(query, context)
-    
-    elif data == 'my_info':
-        await show_my_info(query, context)
-    
-    elif data == 'help':
-        await query.edit_message_text(
-            "🤖 <b>TAP&EAT Help</b>\n\nNeed assistance? Contact admin.",
-            reply_markup=main_menu_keyboard(is_admin),
-            parse_mode='HTML'
-        )
-    
-    elif data == 'admin_panel':
-        if is_admin:
+    try:
+        # Main menu actions
+        if data == 'order_food':
+            await show_restaurants(query, context)
+        
+        elif data == 'back_to_main':
             await query.edit_message_text(
-                "👑 <b>Admin Panel</b>\n\nManage orders and view stats:",
-                reply_markup=admin_keyboard(),
+                "🏠 <b>Main Menu</b>",
+                reply_markup=main_menu_keyboard(is_admin),
                 parse_mode='HTML'
             )
-        else:
-            await query.answer("❌ Admin access required!", show_alert=True)
-    
-    elif data == 'view_orders':
-        if is_admin:
-            await show_admin_orders(query, context)
-        else:
-            await query.answer("❌ Admin access required!", show_alert=True)
-    
-    elif data == 'stats':
-        if is_admin:
-            await show_stats(query, context)
-        else:
-            await query.answer("❌ Admin access required!", show_alert=True)
-    
-    elif data == 'manage_restaurants':
-        if is_admin:
+        
+        elif data == 'my_orders':
+            await show_my_orders(query, context)
+        
+        elif data == 'my_info':
+            await show_my_info(query, context)
+        
+        elif data == 'help':
             await query.edit_message_text(
-                "🏪 <b>Restaurant Management</b>\n\nCurrently restaurants are pre-configured. Contact developer for changes.",
-                reply_markup=admin_keyboard(),
+                "🤖 <b>TAP&EAT Help</b>\n\nNeed assistance? Contact admin.",
+                reply_markup=main_menu_keyboard(is_admin),
                 parse_mode='HTML'
             )
-        else:
-            await query.answer("❌ Admin access required!", show_alert=True)
+        
+        elif data == 'admin_panel':
+            if is_admin:
+                await query.edit_message_text(
+                    "👑 <b>Admin Panel</b>\n\nManage orders and view stats:",
+                    reply_markup=admin_keyboard(),
+                    parse_mode='HTML'
+                )
+            else:
+                await query.answer("❌ Admin access required!", show_alert=True)
+        
+        elif data == 'view_orders':
+            if is_admin:
+                await show_admin_orders(query, context)
+            else:
+                await query.answer("❌ Admin access required!", show_alert=True)
+        
+        elif data == 'stats':
+            if is_admin:
+                await show_stats(query, context)
+            else:
+                await query.answer("❌ Admin access required!", show_alert=True)
+        
+        elif data.startswith('rest_'):
+            restaurant_id = int(data.split('_')[1])
+            await show_menu(query, context, restaurant_id)
+        
+        elif data.startswith('item_'):
+            item_id = int(data.split('_')[1])
+            await show_quantity(query, context, item_id)
+        
+        elif data.startswith('qty_'):
+            parts = data.split('_')
+            if len(parts) >= 3:
+                item_id = int(parts[1])
+                quantity = int(parts[2])
+                
+                # Store in user data
+                context.user_data['order_item_id'] = item_id
+                context.user_data['order_quantity'] = quantity
+                
+                await process_order(query, context)
+        
+        elif data == 'confirm_order':
+            await confirm_order_handler(query, context)
+        
+        elif data == 'cancel_order':
+            await query.edit_message_text(
+                "❌ Order cancelled.",
+                reply_markup=main_menu_keyboard(is_admin),
+                parse_mode='HTML'
+            )
+            context.user_data.clear()
+        
+        elif data.startswith('accept_'):
+            if is_admin:
+                order_id = int(data.split('_')[1])
+                await update_order_status(query, context, order_id, 'accepted')
+        
+        elif data.startswith('reject_'):
+            if is_admin:
+                order_id = int(data.split('_')[1])
+                await update_order_status(query, context, order_id, 'rejected')
+        
+        elif data.startswith('deliver_'):
+            if is_admin:
+                order_id = int(data.split('_')[1])
+                await update_order_status(query, context, order_id, 'delivered')
+        
+        elif data.startswith('call_'):
+            if is_admin:
+                order_id = int(data.split('_')[1])
+                await show_customer_phone(query, context, order_id)
     
-    elif data.startswith('rest_'):
-        restaurant_id = int(data.split('_')[1])
-        await show_menu(query, context, restaurant_id)
-    
-    elif data.startswith('item_'):
-        item_id = int(data.split('_')[1])
-        await show_quantity(query, context, item_id)
-    
-    elif data.startswith('qty_'):
-        parts = data.split('_')
-        if len(parts) >= 3:
-            item_id = int(parts[1])
-            quantity = int(parts[2])
-            
-            # Store in user data
-            context.user_data['order_item_id'] = item_id
-            context.user_data['order_quantity'] = quantity
-            
-            await process_order(query, context)
-    
-    elif data == 'confirm_order':
-        await confirm_order_handler(query, context)
-    
-    elif data == 'cancel_order':
-        await query.edit_message_text(
-            "❌ Order cancelled.",
-            reply_markup=main_menu_keyboard(is_admin),
-            parse_mode='HTML'
-        )
-        context.user_data.clear()
-    
-    elif data.startswith('accept_'):
-        if is_admin:
-            order_id = int(data.split('_')[1])
-            await update_order_status(query, context, order_id, 'accepted')
-    
-    elif data.startswith('reject_'):
-        if is_admin:
-            order_id = int(data.split('_')[1])
-            await update_order_status(query, context, order_id, 'rejected')
-    
-    elif data.startswith('deliver_'):
-        if is_admin:
-            order_id = int(data.split('_')[1])
-            await update_order_status(query, context, order_id, 'delivered')
-    
-    elif data.startswith('call_'):
-        if is_admin:
-            order_id = int(data.split('_')[1])
-            await show_customer_phone(query, context, order_id)
+    except Exception as e:
+        logger.error(f"Error in button handler: {e}")
+        await query.answer("❌ An error occurred. Please try again.", show_alert=True)
 
 async def show_restaurants(query, context):
     """Show list of restaurants"""
@@ -462,7 +492,6 @@ async def show_restaurants(query, context):
     if not restaurants:
         await query.edit_message_text(
             "😔 <b>No restaurants available yet.</b>\n\nCheck back soon!",
-            reply_markup=back_to_main_keyboard(),
             parse_mode='HTML'
         )
         return
@@ -1039,7 +1068,7 @@ To place an order, you'll need to provide:
     
     await query.edit_message_text(
         info_text,
-        reply_markup=back_to_main_keyboard(user_id == ADMIN_ID),
+        reply_markup=main_menu_keyboard(user_id == ADMIN_ID),
         parse_mode='HTML'
     )
 
@@ -1092,96 +1121,65 @@ async def show_stats(query, context):
         parse_mode='HTML'
     )
 
-# ===================== ADMIN COMMANDS =====================
-async def orders_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin command to view orders"""
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ Admin access required!")
-        return
-    
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT id, order_code, food_name, quantity, customer_name, status, created_at
-        FROM orders 
-        ORDER BY created_at DESC 
-        LIMIT 10
-    ''')
-    orders = cursor.fetchall()
-    conn.close()
-    
-    if not orders:
-        await update.message.reply_text("📭 No orders yet!")
-        return
-    
-    orders_text = "📊 <b>Recent Orders:</b>\n\n"
-    for order in orders:
-        order_id, code, food, qty, customer, status, time = order
-        orders_text += f"""
-🆔 #{order_id} - {code}
-🍽️ {food} (x{qty})
-👤 {customer}
-📊 {status.upper()}
-⏰ {time[:16]}
-────────────
-"""
-    
-    await update.message.reply_text(orders_text, parse_mode='HTML')
-
-async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin command to clear all orders"""
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ Admin access required!")
-        return
-    
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM orders")
-    conn.commit()
-    conn.close()
-    
-    await update.message.reply_text("✅ All orders cleared!")
-
 # ===================== WEB SERVER FOR RAILWAY =====================
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    """Health check endpoint"""
+    """Health check endpoint - root"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM users")
         user_count = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM orders")
+        order_count = cursor.fetchone()[0]
         conn.close()
-        return f"🤖 TAP&EAT Bot is running! Users: {user_count}"
-    except:
-        return "🤖 TAP&EAT Bot is running!"
+        return Response(
+            f"🤖 TAP&EAT Bot is running!\n\n👥 Users: {user_count}\n📦 Orders: {order_count}\n✅ Status: Online",
+            status=200,
+            mimetype='text/plain'
+        )
+    except Exception as e:
+        print(f"Health check error: {e}")
+        return Response(
+            "🤖 TAP&EAT Bot is running!\n⚠️ Database connection issue",
+            status=200,
+            mimetype='text/plain'
+        )
 
 @app.route('/health')
 def health():
-    """Health check endpoint"""
-    return {"status": "healthy", "service": "tap-eat-bot"}, 200
+    """Health check endpoint for Railway"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1")
+        conn.close()
+        return {"status": "healthy", "service": "tap-eat-bot", "timestamp": datetime.now().isoformat()}, 200
+    except Exception as e:
+        print(f"Health check error: {e}")
+        return {"status": "unhealthy", "error": str(e)}, 500
 
 def run_flask():
     """Run Flask server in a separate thread"""
-    app.run(host='0.0.0.0', port=8080)
+    print(f"🌐 Starting Flask server on port {PORT}...")
+    app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
 
 # ===================== MAIN FUNCTION =====================
 def main():
     """Main function to start the bot"""
     # Initialize database
+    print("📊 Initializing database...")
     init_database()
-    logger.info("✅ Database initialized")
     
     # Create application
+    print("🤖 Creating bot application...")
     application = Application.builder().token(BOT_TOKEN).build()
     
     # Add command handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("orders", orders_command))
-    application.add_handler(CommandHandler("clear", clear_command))
     
     # Add callback query handler
     application.add_handler(CallbackQueryHandler(button_handler))
@@ -1189,18 +1187,31 @@ def main():
     # Add message handler
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    # Start Flask server in background
-    import threading
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    # Start Flask server in background thread
+    print("🚀 Starting Flask server...")
+    from threading import Thread
+    flask_thread = Thread(target=run_flask, daemon=True)
     flask_thread.start()
-    logger.info("✅ Flask server started on port 8080")
+    
+    # Give Flask time to start
+    time.sleep(2)
     
     # Start bot
-    logger.info("🤖 Starting TAP&EAT Bot...")
-    logger.info(f"👑 Admin ID: {ADMIN_ID}")
+    print("✅ Starting bot polling...")
+    print("🎉 Bot is now running! Press Ctrl+C to stop.")
     
-    # Run bot
-    application.run_polling(drop_pending_updates=True)
+    # Run bot with error handling
+    try:
+        application.run_polling(
+            drop_pending_updates=True,
+            allowed_updates=Update.ALL_TYPES,
+            close_loop=False
+        )
+    except Exception as e:
+        print(f"❌ Bot error: {e}")
+        print("🔄 Restarting in 10 seconds...")
+        time.sleep(10)
+        main()
 
 if __name__ == "__main__":
     main()
