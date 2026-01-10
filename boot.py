@@ -14,7 +14,7 @@ from threading import Thread
 import asyncio
 
 # ===================== CONFIGURATION =====================
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8367062998:AAEr51KmoIKEIM5iHbfDU9W0jo_cPyivQCE")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8367062998:AAF0gmnN5VvLw4Vkosa89O9qK8ogrWmo7so")
 ADMIN_ID = int(os.environ.get("ADMIN_ID", "6237524660"))
 DATABASE_FILE = "tap_eat.db"
 
