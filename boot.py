@@ -29,8 +29,6 @@ def get_bot_token():
     if token:
         masked_token = f"{token[:10]}...{token[-5:]}"
         print(f"🔑 Bot token loaded: {masked_token}")
-        print(f"🔑 Token length: {len(token)}")
-        print(f"🔑 Token starts with: {token[:5]}")
     
     return token
 
@@ -47,12 +45,11 @@ def get_admin_id():
 BOT_TOKEN = get_bot_token()
 ADMIN_ID = get_admin_id()
 DATABASE_FILE = "tap_eat.db"
-PORT = int(os.environ.get("PORT", 8080))  # Railway provides PORT
+PORT = int(os.environ.get("PORT", 8080))
 
 print(f"🚀 Starting TAP&EAT Bot...")
 print(f"👑 Admin ID: {ADMIN_ID}")
 print(f"🌐 Port: {PORT}")
-print(f"📁 Database: {DATABASE_FILE}")
 
 # Setup logging
 logging.basicConfig(
@@ -280,7 +277,7 @@ def quantity_keyboard(item_id, restaurant_id):
     """Create quantity selection keyboard"""
     keyboard = []
     row = []
-    for i in [1, 2, 3, 4, 5, 6, 8, 10]:
+    for i in [1, 2, 3, 4, 5]:
         row.append(InlineKeyboardButton(str(i), callback_data=f'qty_{item_id}_{i}'))
         if len(row) == 3:
             keyboard.append(row)
@@ -301,73 +298,75 @@ def order_actions_keyboard(order_id):
     ]
     return InlineKeyboardMarkup(keyboard)
 
-def confirm_cancel_keyboard():
-    """Create confirm/cancel keyboard"""
-    keyboard = [
-        [InlineKeyboardButton("✅ Confirm Order", callback_data='confirm_order')],
-        [InlineKeyboardButton("❌ Cancel", callback_data='cancel_order')]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
 # ===================== COMMAND HANDLERS =====================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /start command"""
-    user = update.effective_user
-    user_id = user.id
-    username = user.username
-    full_name = f"{user.first_name} {user.last_name or ''}".strip()
-    
-    # Save user to database
-    save_user(user_id, username, full_name)
-    
-    # Check if admin
-    is_admin = (user_id == ADMIN_ID)
-    
-    welcome_text = f"""
-🎓 <b>Welcome to TAP&EAT, {user.first_name}!</b>
+    try:
+        user = update.effective_user
+        user_id = user.id
+        username = user.username
+        full_name = f"{user.first_name} {user.last_name or ''}".strip()
+        
+        print(f"👤 User {user_id} ({full_name}) started the bot")
+        
+        # Save user to database
+        save_user(user_id, username, full_name)
+        
+        # Check if admin
+        is_admin = (user_id == ADMIN_ID)
+        print(f"🔐 Is admin: {is_admin}")
+        
+        # SIMPLIFIED WELCOME MESSAGE - NO HTML FORMATTING
+        welcome_text = f"""🎓 Welcome to TAP&EAT, {user.first_name}!
 
-🍔 <b>Your Campus Food Delivery Bot</b>
+🍔 Your Campus Food Delivery Bot
 
-📍 <b>How it works:</b>
+📍 How it works:
 1. Tap '🍽️ Order Food'
 2. Choose restaurant
 3. Select food & quantity
 4. Confirm details
 5. We deliver to your dorm!
 
-🚚 <b>Delivery to your room</b>
-⏰ <b>24/7 Ordering Available</b>
+🚚 Delivery to your room
+⏰ 24/7 Ordering Available
 
-<i>Start by tapping '🍽️ Order Food' below!</i>
-    """
-    
-    if is_admin:
-        welcome_text += "\n\n👑 <b>Admin privileges activated!</b>"
-    
-    await update.message.reply_text(
-        welcome_text,
-        reply_markup=main_menu_keyboard(is_admin),
-        parse_mode='HTML'
-    )
+Start by tapping '🍽️ Order Food' below!"""
+        
+        if is_admin:
+            welcome_text += "\n\n👑 Admin privileges activated!"
+        
+        # Send message without HTML parsing first
+        await update.message.reply_text(
+            welcome_text,
+            reply_markup=main_menu_keyboard(is_admin)
+        )
+        print(f"✅ Sent welcome message to user {user_id}")
+        
+    except Exception as e:
+        print(f"❌ Error in start command: {e}")
+        # Try sending a simple error message
+        try:
+            await update.message.reply_text("Welcome to TAP&EAT! Please use the menu buttons below:")
+        except:
+            pass
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /help command"""
-    help_text = """
-<b>🤖 TAP&EAT - Help Guide</b>
+    help_text = """🤖 TAP&EAT - Help Guide
 
-<b>For Students:</b>
+For Students:
 • Use '🍽️ Order Food' to place orders
 • Update your info in '⚙️ My Info'
 • Check '📋 My Orders' for status
 
-<b>For Admin:</b>
+For Admin:
 • Use '👑 Admin Panel' for management
 • View and manage orders
 
-<b>Need help?</b>
-Contact the administrator.
-    """
-    await update.message.reply_text(help_text, parse_mode='HTML')
+Need help?
+Contact the administrator."""
+    await update.message.reply_text(help_text)
 
 # ===================== CALLBACK HANDLERS =====================
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -380,15 +379,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_admin = (user_id == ADMIN_ID)
     
     try:
+        print(f"🔄 Button pressed by {user_id}: {data}")
+        
         # Main menu actions
         if data == 'order_food':
             await show_restaurants(query, context)
         
         elif data == 'back_to_main':
             await query.edit_message_text(
-                "🏠 <b>Main Menu</b>",
-                reply_markup=main_menu_keyboard(is_admin),
-                parse_mode='HTML'
+                "🏠 Main Menu",
+                reply_markup=main_menu_keyboard(is_admin)
             )
         
         elif data == 'my_orders':
@@ -399,15 +399,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         elif data == 'help':
             await query.edit_message_text(
-                "🤖 <b>TAP&EAT Help</b>\n\nNeed assistance? Contact admin.",
-                reply_markup=main_menu_keyboard(is_admin),
-                parse_mode='HTML'
+                "🤖 TAP&EAT Help\n\nNeed assistance? Contact admin.",
+                reply_markup=main_menu_keyboard(is_admin)
             )
         
         elif data == 'admin_panel':
             if is_admin:
                 await query.edit_message_text(
-                    "👑 <b>Admin Panel</b>\n\nManage orders and view stats:",
+                    "👑 Admin Panel\n\nManage orders and view stats:",
                     reply_markup=admin_keyboard(),
                     parse_mode='HTML'
                 )
@@ -446,17 +445,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 await process_order(query, context)
         
-        elif data == 'confirm_order':
-            await confirm_order_handler(query, context)
-        
-        elif data == 'cancel_order':
-            await query.edit_message_text(
-                "❌ Order cancelled.",
-                reply_markup=main_menu_keyboard(is_admin),
-                parse_mode='HTML'
-            )
-            context.user_data.clear()
-        
         elif data.startswith('accept_'):
             if is_admin:
                 order_id = int(data.split('_')[1])
@@ -478,248 +466,432 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await show_customer_phone(query, context, order_id)
     
     except Exception as e:
-        logger.error(f"Error in button handler: {e}")
+        print(f"❌ Error in button handler: {e}")
         await query.answer("❌ An error occurred. Please try again.", show_alert=True)
 
 async def show_restaurants(query, context):
     """Show list of restaurants"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, name FROM restaurants WHERE is_active = 1")
-    restaurants = cursor.fetchall()
-    conn.close()
-    
-    if not restaurants:
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, name FROM restaurants WHERE is_active = 1")
+        restaurants = cursor.fetchall()
+        conn.close()
+        
+        if not restaurants:
+            await query.edit_message_text(
+                "😔 No restaurants available yet.\n\nCheck back soon!"
+            )
+            return
+        
+        restaurants_text = "🏪 Choose a restaurant:\n\n"
+        for rest_id, name in restaurants:
+            restaurants_text += f"• {name}\n"
+        
         await query.edit_message_text(
-            "😔 <b>No restaurants available yet.</b>\n\nCheck back soon!",
-            parse_mode='HTML'
+            restaurants_text,
+            reply_markup=restaurants_keyboard()
         )
-        return
-    
-    restaurants_text = "🏪 <b>Choose a restaurant:</b>\n\n"
-    for rest_id, name in restaurants:
-        restaurants_text += f"• {name}\n"
-    
-    await query.edit_message_text(
-        restaurants_text,
-        reply_markup=restaurants_keyboard(),
-        parse_mode='HTML'
-    )
+    except Exception as e:
+        print(f"❌ Error in show_restaurants: {e}")
+        await query.edit_message_text("❌ Error loading restaurants. Please try again.")
 
 async def show_menu(query, context, restaurant_id):
     """Show menu for a restaurant"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    # Get restaurant name
-    cursor.execute("SELECT name FROM restaurants WHERE id = ?", (restaurant_id,))
-    restaurant = cursor.fetchone()
-    
-    if not restaurant:
-        await query.answer("Restaurant not found!", show_alert=True)
-        return
-    
-    restaurant_name = restaurant[0]
-    
-    # Get menu items
-    cursor.execute("SELECT id, name, price FROM menu_items WHERE restaurant_id = ? AND is_available = 1", (restaurant_id,))
-    items = cursor.fetchall()
-    conn.close()
-    
-    if not items:
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get restaurant name
+        cursor.execute("SELECT name FROM restaurants WHERE id = ?", (restaurant_id,))
+        restaurant = cursor.fetchone()
+        
+        if not restaurant:
+            await query.answer("Restaurant not found!", show_alert=True)
+            return
+        
+        restaurant_name = restaurant[0]
+        
+        # Get menu items
+        cursor.execute("SELECT id, name, price FROM menu_items WHERE restaurant_id = ? AND is_available = 1", (restaurant_id,))
+        items = cursor.fetchall()
+        conn.close()
+        
+        if not items:
+            await query.edit_message_text(
+                f"🏪 {restaurant_name}\n\nNo menu items available yet.",
+                reply_markup=restaurants_keyboard()
+            )
+            return
+        
+        menu_text = f"🏪 {restaurant_name}\n\n📋 Menu:\n\n"
+        for item_id, name, price in items:
+            menu_text += f"• {name} - ${price:.2f}\n"
+        
         await query.edit_message_text(
-            f"🏪 <b>{restaurant_name}</b>\n\nNo menu items available yet.",
-            reply_markup=restaurants_keyboard(),
-            parse_mode='HTML'
+            menu_text,
+            reply_markup=menu_keyboard(restaurant_id)
         )
-        return
-    
-    menu_text = f"🏪 <b>{restaurant_name}</b>\n\n📋 <b>Menu:</b>\n\n"
-    for item_id, name, price in items:
-        menu_text += f"• {name} - <b>${price:.2f}</b>\n"
-    
-    await query.edit_message_text(
-        menu_text,
-        reply_markup=menu_keyboard(restaurant_id),
-        parse_mode='HTML'
-    )
+    except Exception as e:
+        print(f"❌ Error in show_menu: {e}")
+        await query.answer("Error loading menu!", show_alert=True)
 
 async def show_quantity(query, context, item_id):
     """Show quantity selection for an item"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT name, price, restaurant_id FROM menu_items WHERE id = ?", (item_id,))
-    item = cursor.fetchone()
-    conn.close()
-    
-    if not item:
-        await query.answer("Item not found!", show_alert=True)
-        return
-    
-    item_name, price, restaurant_id = item
-    context.user_data['item_name'] = item_name
-    context.user_data['price'] = price
-    context.user_data['item_id'] = item_id
-    context.user_data['restaurant_id'] = restaurant_id
-    
-    await query.edit_message_text(
-        f"🍽️ <b>{item_name}</b>\n💰 Price: <b>${price:.2f}</b>\n\nSelect quantity:",
-        reply_markup=quantity_keyboard(item_id, restaurant_id),
-        parse_mode='HTML'
-    )
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT name, price, restaurant_id FROM menu_items WHERE id = ?", (item_id,))
+        item = cursor.fetchone()
+        conn.close()
+        
+        if not item:
+            await query.answer("Item not found!", show_alert=True)
+            return
+        
+        item_name, price, restaurant_id = item
+        context.user_data['item_name'] = item_name
+        context.user_data['price'] = price
+        context.user_data['item_id'] = item_id
+        context.user_data['restaurant_id'] = restaurant_id
+        
+        await query.edit_message_text(
+            f"🍽️ {item_name}\n💰 Price: ${price:.2f}\n\nSelect quantity:",
+            reply_markup=quantity_keyboard(item_id, restaurant_id)
+        )
+    except Exception as e:
+        print(f"❌ Error in show_quantity: {e}")
+        await query.answer("Error loading item!", show_alert=True)
 
 async def process_order(query, context):
     """Process order after quantity selection"""
-    user_id = query.from_user.id
-    
-    # Get item details
-    item_id = context.user_data.get('order_item_id')
-    quantity = context.user_data.get('order_quantity', 1)
-    
-    if not item_id:
-        await query.answer("Item not selected!", show_alert=True)
-        return
-    
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT name, price, restaurant_id FROM menu_items WHERE id = ?", (item_id,))
-    item = cursor.fetchone()
-    conn.close()
-    
-    if not item:
-        await query.answer("Item not found!", show_alert=True)
-        return
-    
-    item_name, price, restaurant_id = item
-    total = price * quantity
-    
-    # Store order details
-    context.user_data['item_name'] = item_name
-    context.user_data['price'] = price
-    context.user_data['total'] = total
-    context.user_data['restaurant_id'] = restaurant_id
-    
-    # Get restaurant name
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT name FROM restaurants WHERE id = ?", (restaurant_id,))
-    restaurant = cursor.fetchone()
-    conn.close()
-    
-    if restaurant:
-        context.user_data['restaurant_name'] = restaurant[0]
-    
-    # Check if user has saved info
-    user_info = get_user_info(user_id)
-    
-    if not user_info or not user_info[3]:  # Check if phone exists
-        # Ask for info via conversation
-        await ask_user_info_start(query, context)
-    else:
-        # Show order summary with saved info
-        await show_order_summary(query, context, user_info)
+    try:
+        user_id = query.from_user.id
+        
+        # Get item details
+        item_id = context.user_data.get('order_item_id')
+        quantity = context.user_data.get('order_quantity', 1)
+        
+        if not item_id:
+            await query.answer("Item not selected!", show_alert=True)
+            return
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT name, price, restaurant_id FROM menu_items WHERE id = ?", (item_id,))
+        item = cursor.fetchone()
+        conn.close()
+        
+        if not item:
+            await query.answer("Item not found!", show_alert=True)
+            return
+        
+        item_name, price, restaurant_id = item
+        total = price * quantity
+        
+        # Store order details
+        context.user_data['item_name'] = item_name
+        context.user_data['price'] = price
+        context.user_data['total'] = total
+        context.user_data['restaurant_id'] = restaurant_id
+        
+        # Get restaurant name
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM restaurants WHERE id = ?", (restaurant_id,))
+        restaurant = cursor.fetchone()
+        conn.close()
+        
+        if restaurant:
+            context.user_data['restaurant_name'] = restaurant[0]
+        
+        # Check if user has saved info
+        user_info = get_user_info(user_id)
+        
+        if not user_info or not user_info[3]:  # Check if phone exists
+            # Ask for info via conversation
+            await ask_user_info_start(query, context)
+        else:
+            # Show order summary with saved info
+            await show_order_summary(query, context, user_info)
+    except Exception as e:
+        print(f"❌ Error in process_order: {e}")
+        await query.answer("Error processing order!", show_alert=True)
 
 async def ask_user_info_start(query, context):
     """Start asking user for information"""
-    await query.edit_message_text(
-        "📝 <b>We need your information for delivery:</b>\n\nPlease send your phone number:",
-        parse_mode='HTML'
-    )
-    context.user_data['awaiting_info'] = True
-    context.user_data['info_step'] = 'phone'
+    try:
+        await query.edit_message_text(
+            "📝 We need your information for delivery:\n\nPlease send your phone number:"
+        )
+        context.user_data['awaiting_info'] = True
+        context.user_data['info_step'] = 'phone'
+    except Exception as e:
+        print(f"❌ Error in ask_user_info_start: {e}")
 
 async def show_order_summary(query, context, user_info):
-    """Show order summary for confirmation"""
-    item_name = context.user_data.get('item_name', 'Unknown')
-    price = context.user_data.get('price', 0)
-    quantity = context.user_data.get('order_quantity', 1)
-    total = context.user_data.get('total', 0)
-    restaurant_name = context.user_data.get('restaurant_name', 'Unknown')
-    
-    summary = f"""
-✅ <b>ORDER SUMMARY</b>
+    """Show order summary for confirmation - SIMPLE VERSION WITHOUT BUTTONS"""
+    try:
+        item_name = context.user_data.get('item_name', 'Unknown')
+        price = context.user_data.get('price', 0)
+        quantity = context.user_data.get('order_quantity', 1)
+        total = context.user_data.get('total', 0)
+        restaurant_name = context.user_data.get('restaurant_name', 'Unknown')
+        
+        summary = f"""✅ ORDER SUMMARY
 
 🏪 Restaurant: {restaurant_name}
 🍽️ Item: {item_name}
 💰 Price: ${price:.2f} each
 🔢 Quantity: {quantity}
-💵 Total: <b>${total:.2f}</b>
+💵 Total: ${total:.2f}
 
 👤 Customer: {user_info[2]}
 📞 Phone: {user_info[3]}
 📍 Dorm: {user_info[4]}, Block: {user_info[5]}{f', Room: {user_info[6]}' if user_info[6] else ''}
 
-<b>Please confirm your order:</b>
-    """
-    
-    await query.edit_message_text(
-        summary,
-        reply_markup=confirm_cancel_keyboard(),
-        parse_mode='HTML'
-    )
+📝 To confirm your order, type:
+1 - ✅ Confirm Order
+2 - ❌ Cancel Order
 
-async def confirm_order_handler(query, context):
+Please type 1 or 2:"""
+        
+        await query.edit_message_text(summary)
+        
+        # Set state for confirmation
+        context.user_data['awaiting_confirmation'] = True
+    except Exception as e:
+        print(f"❌ Error in show_order_summary: {e}")
+
+# ===================== MESSAGE HANDLERS =====================
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle text messages"""
+    try:
+        user_id = update.effective_user.id
+        text = update.message.text.strip()
+        is_admin = (user_id == ADMIN_ID)
+        
+        print(f"📨 Message from {user_id}: {text}")
+        
+        # Check if we're collecting user info
+        if context.user_data.get('awaiting_info'):
+            step = context.user_data.get('info_step')
+            
+            if step == 'phone':
+                # Basic phone validation
+                if not text.replace('+', '').replace(' ', '').isdigit() or len(text.replace('+', '').replace(' ', '')) < 10:
+                    await update.message.reply_text("Please enter a valid phone number (at least 10 digits):")
+                    return
+                
+                context.user_data['phone'] = text
+                context.user_data['info_step'] = 'name'
+                await update.message.reply_text("👤 Please send your full name:")
+            
+            elif step == 'name':
+                if len(text) < 2:
+                    await update.message.reply_text("Please enter a valid name (at least 2 characters):")
+                    return
+                
+                context.user_data['name'] = text
+                context.user_data['info_step'] = 'dorm'
+                await update.message.reply_text("🏢 Please send your dorm name/number:")
+            
+            elif step == 'dorm':
+                context.user_data['dorm'] = text
+                context.user_data['info_step'] = 'block'
+                await update.message.reply_text("🏠 Please send your block:")
+            
+            elif step == 'block':
+                context.user_data['block'] = text
+                context.user_data['info_step'] = 'room'
+                await update.message.reply_text("🚪 Please send your room number (or type 'skip' if none):")
+            
+            elif step == 'room':
+                if text.lower() != 'skip':
+                    context.user_data['room'] = text
+                else:
+                    context.user_data['room'] = ''
+                
+                # Save user info to database
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                
+                # Check if user exists
+                cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+                user = cursor.fetchone()
+                
+                if user:
+                    # Update existing user
+                    cursor.execute('''
+                        UPDATE users SET 
+                        phone = ?, full_name = ?, dorm = ?, block = ?, room = ?
+                        WHERE user_id = ?
+                    ''', (
+                        context.user_data['phone'],
+                        context.user_data['name'],
+                        context.user_data['dorm'],
+                        context.user_data['block'],
+                        context.user_data.get('room', ''),
+                        user_id
+                    ))
+                else:
+                    # Insert new user
+                    user_obj = update.effective_user
+                    cursor.execute('''
+                        INSERT INTO users (user_id, username, full_name, phone, dorm, block, room)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        user_id,
+                        user_obj.username or "",
+                        context.user_data['name'],
+                        context.user_data['phone'],
+                        context.user_data['dorm'],
+                        context.user_data['block'],
+                        context.user_data.get('room', '')
+                    ))
+                
+                conn.commit()
+                conn.close()
+                
+                # Get updated user info
+                user_info = get_user_info(user_id)
+                
+                # Show order summary
+                await show_order_summary_message(update, context, user_info)
+                
+                # Clear collection state
+                context.user_data.pop('awaiting_info', None)
+                context.user_data.pop('info_step', None)
+            
+            return
+        
+        # Check if we're waiting for order confirmation
+        if context.user_data.get('awaiting_confirmation'):
+            if text == '1':  # Confirm order
+                await confirm_order(update, context)
+            elif text == '2':  # Cancel order
+                await update.message.reply_text("❌ Order cancelled.")
+                context.user_data.clear()
+                await update.message.reply_text(
+                    "🏠 Main Menu",
+                    reply_markup=main_menu_keyboard(is_admin)
+                )
+            else:
+                await update.message.reply_text(
+                    "❌ Invalid option. Please type:\n1 - ✅ Confirm Order\n2 - ❌ Cancel Order"
+                )
+            return
+        
+        # Unknown message - show main menu
+        await update.message.reply_text(
+            "Please use the menu buttons to navigate:",
+            reply_markup=main_menu_keyboard(is_admin)
+        )
+        
+    except Exception as e:
+        print(f"❌ Error in handle_message: {e}")
+        await update.message.reply_text("❌ An error occurred. Please try /start again.")
+
+async def show_order_summary_message(update, context, user_info):
+    """Show order summary in message - SIMPLE VERSION WITHOUT BUTTONS"""
+    try:
+        item_name = context.user_data.get('item_name', 'Unknown')
+        price = context.user_data.get('price', 0)
+        quantity = context.user_data.get('order_quantity', 1)
+        total = context.user_data.get('total', 0)
+        restaurant_name = context.user_data.get('restaurant_name', 'Unknown')
+        
+        summary = f"""✅ ORDER SUMMARY
+
+🏪 Restaurant: {restaurant_name}
+🍽️ Item: {item_name}
+💰 Price: ${price:.2f} each
+🔢 Quantity: {quantity}
+💵 Total: ${total:.2f}
+
+👤 Customer: {user_info[2]}
+📞 Phone: {user_info[3]}
+📍 Dorm: {user_info[4]}, Block: {user_info[5]}{f', Room: {user_info[6]}' if user_info[6] else ''}
+
+📝 To confirm your order, type:
+1 - ✅ Confirm Order
+2 - ❌ Cancel Order
+
+Please type 1 or 2:"""
+        
+        await update.message.reply_text(summary)
+        
+        # Set state for confirmation
+        context.user_data['awaiting_confirmation'] = True
+    except Exception as e:
+        print(f"❌ Error in show_order_summary_message: {e}")
+        await update.message.reply_text("❌ Error showing order summary. Please try again.")
+
+async def confirm_order(update, context):
     """Handle order confirmation"""
-    user_id = query.from_user.id
-    
-    # Get order details from context
-    item_id = context.user_data.get('order_item_id')
-    quantity = context.user_data.get('order_quantity', 1)
-    item_name = context.user_data.get('item_name', 'Unknown')
-    price = context.user_data.get('price', 0)
-    total = context.user_data.get('total', 0)
-    restaurant_name = context.user_data.get('restaurant_name', 'Unknown')
-    
-    if not all([item_id, item_name, restaurant_name]):
-        await query.answer("Order details missing!", show_alert=True)
-        return
-    
-    # Get user info
-    user_info = get_user_info(user_id)
-    if not user_info or not user_info[3]:
-        await query.answer("Please complete your info first!", show_alert=True)
-        return
-    
-    # Save order to database
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    order_code = generate_order_code()
-    
-    cursor.execute('''
-        INSERT INTO orders (
-            order_code, user_id, restaurant_name, food_name,
-            quantity, total_price, customer_name, phone,
-            dorm, block, room, status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (
-        order_code, user_id,
-        restaurant_name,
-        item_name, quantity, total,
-        user_info[2],  # customer_name
-        user_info[3],  # phone
-        user_info[4],  # dorm
-        user_info[5],  # block
-        user_info[6] if len(user_info) > 6 else '',  # room
-        'pending'
-    ))
-    
-    order_id = cursor.lastrowid
-    conn.commit()
-    
-    # Get the complete order for admin notification
-    cursor.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
-    order = cursor.fetchone()
-    conn.close()
-    
-    # Notify admin
-    if order:
-        await notify_admin(context, order)
-    
-    # Confirm to user
-    await query.edit_message_text(
-        f"""
-✅ <b>Order #{order_id} placed successfully!</b>
+    try:
+        user_id = update.effective_user.id
+        is_admin = (user_id == ADMIN_ID)
+        
+        # Get order details from context
+        item_id = context.user_data.get('order_item_id')
+        quantity = context.user_data.get('order_quantity', 1)
+        item_name = context.user_data.get('item_name', 'Unknown')
+        price = context.user_data.get('price', 0)
+        total = context.user_data.get('total', 0)
+        restaurant_name = context.user_data.get('restaurant_name', 'Unknown')
+        
+        if not all([item_id, item_name, restaurant_name]):
+            await update.message.reply_text("❌ Order details missing! Please start over.")
+            context.user_data.clear()
+            return
+        
+        # Get user info
+        user_info = get_user_info(user_id)
+        if not user_info or not user_info[3]:
+            await update.message.reply_text("❌ Please complete your info first! Start a new order.")
+            context.user_data.clear()
+            return
+        
+        # Save order to database
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        order_code = generate_order_code()
+        
+        cursor.execute('''
+            INSERT INTO orders (
+                order_code, user_id, restaurant_name, food_name,
+                quantity, total_price, customer_name, phone,
+                dorm, block, room, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            order_code, user_id,
+            restaurant_name,
+            item_name, quantity, total,
+            user_info[2],  # customer_name
+            user_info[3],  # phone
+            user_info[4],  # dorm
+            user_info[5],  # block
+            user_info[6] if len(user_info) > 6 else '',  # room
+            'pending'
+        ))
+        
+        order_id = cursor.lastrowid
+        conn.commit()
+        
+        # Get the complete order for admin notification
+        cursor.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
+        order = cursor.fetchone()
+        conn.close()
+        
+        # Notify admin
+        if order:
+            await notify_admin(context, order)
+        
+        # Confirm to user
+        await update.message.reply_text(
+            f"""✅ Order #{order_id} placed successfully!
 
 📦 Order Code: {order_code}
 🏪 Restaurant: {restaurant_name}
@@ -727,239 +899,117 @@ async def confirm_order_handler(query, context):
 💰 Total: ${total:.2f}
 ⏰ Status: Pending approval
 
-<i>Admin has been notified. You'll receive updates soon!</i>
-        """,
-        parse_mode='HTML',
-        reply_markup=main_menu_keyboard(user_id == ADMIN_ID)
-    )
-    
-    # Clear user data
-    context.user_data.clear()
-
-# ===================== MESSAGE HANDLERS =====================
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle text messages"""
-    user_id = update.effective_user.id
-    text = update.message.text.strip()
-    is_admin = (user_id == ADMIN_ID)
-    
-    # Check if we're collecting user info
-    if context.user_data.get('awaiting_info'):
-        step = context.user_data.get('info_step')
+Admin has been notified. You'll receive updates soon!"""
+        )
         
-        if step == 'phone':
-            # Basic phone validation
-            if not text.replace('+', '').replace(' ', '').isdigit() or len(text.replace('+', '').replace(' ', '')) < 10:
-                await update.message.reply_text("Please enter a valid phone number (at least 10 digits):")
-                return
-            
-            context.user_data['phone'] = text
-            context.user_data['info_step'] = 'name'
-            await update.message.reply_text("👤 Please send your full name:")
+        # Show main menu
+        await update.message.reply_text(
+            "🏠 Main Menu",
+            reply_markup=main_menu_keyboard(is_admin)
+        )
         
-        elif step == 'name':
-            if len(text) < 2:
-                await update.message.reply_text("Please enter a valid name (at least 2 characters):")
-                return
-            
-            context.user_data['name'] = text
-            context.user_data['info_step'] = 'dorm'
-            await update.message.reply_text("🏢 Please send your dorm name/number:")
+        # Clear user data
+        context.user_data.clear()
+        print(f"✅ Order #{order_id} placed by user {user_id}")
         
-        elif step == 'dorm':
-            context.user_data['dorm'] = text
-            context.user_data['info_step'] = 'block'
-            await update.message.reply_text("🏠 Please send your block:")
-        
-        elif step == 'block':
-            context.user_data['block'] = text
-            context.user_data['info_step'] = 'room'
-            await update.message.reply_text("🚪 Please send your room number (or type 'skip' if none):")
-        
-        elif step == 'room':
-            if text.lower() != 'skip':
-                context.user_data['room'] = text
-            else:
-                context.user_data['room'] = ''
-            
-            # Save user info to database
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
-            # Check if user exists
-            cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
-            user = cursor.fetchone()
-            
-            if user:
-                # Update existing user
-                cursor.execute('''
-                    UPDATE users SET 
-                    phone = ?, full_name = ?, dorm = ?, block = ?, room = ?
-                    WHERE user_id = ?
-                ''', (
-                    context.user_data['phone'],
-                    context.user_data['name'],
-                    context.user_data['dorm'],
-                    context.user_data['block'],
-                    context.user_data.get('room', ''),
-                    user_id
-                ))
-            else:
-                # Insert new user
-                user_obj = update.effective_user
-                cursor.execute('''
-                    INSERT INTO users (user_id, username, full_name, phone, dorm, block, room)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    user_id,
-                    user_obj.username or "",
-                    context.user_data['name'],
-                    context.user_data['phone'],
-                    context.user_data['dorm'],
-                    context.user_data['block'],
-                    context.user_data.get('room', '')
-                ))
-            
-            conn.commit()
-            conn.close()
-            
-            # Get updated user info
-            user_info = get_user_info(user_id)
-            
-            # Show order summary
-            await show_order_summary_message(update, context, user_info)
-            
-            # Clear collection state
-            context.user_data.pop('awaiting_info', None)
-            context.user_data.pop('info_step', None)
-        
-        return
-    
-    # Unknown message - show main menu
-    await update.message.reply_text(
-        "Please use the menu buttons to navigate:",
-        reply_markup=main_menu_keyboard(is_admin)
-    )
-
-async def show_order_summary_message(update, context, user_info):
-    """Show order summary in message"""
-    item_name = context.user_data.get('item_name', 'Unknown')
-    price = context.user_data.get('price', 0)
-    quantity = context.user_data.get('order_quantity', 1)
-    total = context.user_data.get('total', 0)
-    restaurant_name = context.user_data.get('restaurant_name', 'Unknown')
-    
-    summary = f"""
-✅ <b>ORDER SUMMARY</b>
-
-🏪 Restaurant: {restaurant_name}
-🍽️ Item: {item_name}
-💰 Price: ${price:.2f} each
-🔢 Quantity: {quantity}
-💵 Total: <b>${total:.2f}</b>
-
-👤 Customer: {user_info[2]}
-📞 Phone: {user_info[3]}
-📍 Dorm: {user_info[4]}, Block: {user_info[5]}{f', Room: {user_info[6]}' if user_info[6] else ''}
-
-<b>Please confirm your order using the buttons in your previous message.</b>
-<i>(Go back to the conversation with the order summary)</i>
-    """
-    
-    await update.message.reply_text(
-        summary,
-        parse_mode='HTML'
-    )
+    except Exception as e:
+        print(f"❌ Error in confirm_order: {e}")
+        await update.message.reply_text("❌ Error placing order. Please try again.")
 
 # ===================== ADMIN FUNCTIONS =====================
 async def show_admin_orders(query, context):
     """Show pending orders to admin"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT * FROM orders 
-        WHERE status = 'pending' 
-        ORDER BY created_at DESC
-        LIMIT 10
-    ''')
-    orders = cursor.fetchall()
-    conn.close()
-    
-    if not orders:
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT * FROM orders 
+            WHERE status = 'pending' 
+            ORDER BY created_at DESC
+            LIMIT 10
+        ''')
+        orders = cursor.fetchall()
+        conn.close()
+        
+        if not orders:
+            await query.edit_message_text(
+                "📭 No pending orders!\n\nAll orders are processed.",
+                reply_markup=admin_keyboard(),
+                parse_mode='HTML'
+            )
+            return
+        
+        # Show first order with actions
+        order = orders[0]
         await query.edit_message_text(
-            "📭 <b>No pending orders!</b>\n\nAll orders are processed.",
-            reply_markup=admin_keyboard(),
+            format_order_for_admin(order),
+            reply_markup=order_actions_keyboard(order[0]),
             parse_mode='HTML'
         )
-        return
-    
-    # Show first order with actions
-    order = orders[0]
-    await query.edit_message_text(
-        format_order_for_admin(order),
-        reply_markup=order_actions_keyboard(order[0]),
-        parse_mode='HTML'
-    )
-    
-    # Store remaining orders
-    if len(orders) > 1:
-        context.user_data['pending_orders'] = orders[1:]
+        
+        # Store remaining orders
+        if len(orders) > 1:
+            context.user_data['pending_orders'] = orders[1:]
+    except Exception as e:
+        print(f"❌ Error in show_admin_orders: {e}")
+        await query.edit_message_text("❌ Error loading orders.")
 
 async def update_order_status(query, context, order_id, status):
     """Update order status"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    # Update status
-    cursor.execute("UPDATE orders SET status = ? WHERE id = ?", (status, order_id))
-    
-    # Get order details for notification
-    cursor.execute("SELECT user_id, order_code, customer_name FROM orders WHERE id = ?", (order_id,))
-    order = cursor.fetchone()
-    
-    conn.commit()
-    conn.close()
-    
-    if order:
-        user_id, order_code, customer_name = order
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
         
-        # Prepare status message for user
-        status_messages = {
-            'accepted': 'accepted ✅\n\nYour order is being prepared!',
-            'rejected': 'rejected ❌\n\nPlease contact admin for details.',
-            'delivered': 'delivered 🚚\n\nEnjoy your meal!'
-        }
+        # Update status
+        cursor.execute("UPDATE orders SET status = ? WHERE id = ?", (status, order_id))
         
-        status_msg = status_messages.get(status, f'{status}')
+        # Get order details for notification
+        cursor.execute("SELECT user_id, order_code, customer_name FROM orders WHERE id = ?", (order_id,))
+        order = cursor.fetchone()
         
-        # Notify user
-        try:
-            await context.bot.send_message(
-                user_id,
-                f"📢 <b>Order Update!</b>\n\n"
-                f"Order #{order_id} ({order_code}) has been {status_msg}\n\n"
-                f"Thank you for using TAP&EAT!",
+        conn.commit()
+        conn.close()
+        
+        if order:
+            user_id, order_code, customer_name = order
+            
+            # Prepare status message for user
+            status_messages = {
+                'accepted': 'accepted ✅\n\nYour order is being prepared!',
+                'rejected': 'rejected ❌\n\nPlease contact admin for details.',
+                'delivered': 'delivered 🚚\n\nEnjoy your meal!'
+            }
+            
+            status_msg = status_messages.get(status, f'{status}')
+            
+            # Notify user
+            try:
+                await context.bot.send_message(
+                    user_id,
+                    f"📢 Order Update!\n\nOrder #{order_id} ({order_code}) has been {status_msg}\n\nThank you for using TAP&EAT!"
+                )
+            except Exception as e:
+                print(f"⚠️ Could not notify user {user_id}: {e}")
+        
+        await query.answer(f"✅ Order {status}!")
+        
+        # Show next order or go back
+        if context.user_data.get('pending_orders'):
+            next_order = context.user_data['pending_orders'].pop(0)
+            await query.edit_message_text(
+                format_order_for_admin(next_order),
+                reply_markup=order_actions_keyboard(next_order[0]),
                 parse_mode='HTML'
             )
-        except Exception as e:
-            logger.warning(f"Could not notify user {user_id}: {e}")
-    
-    await query.answer(f"✅ Order {status}!")
-    
-    # Show next order or go back
-    if context.user_data.get('pending_orders'):
-        next_order = context.user_data['pending_orders'].pop(0)
-        await query.edit_message_text(
-            format_order_for_admin(next_order),
-            reply_markup=order_actions_keyboard(next_order[0]),
-            parse_mode='HTML'
-        )
-    else:
-        await query.edit_message_text(
-            f"✅ Order #{order_id} has been {status}!\n\nView more orders:",
-            reply_markup=admin_keyboard(),
-            parse_mode='HTML'
-        )
+        else:
+            await query.edit_message_text(
+                f"✅ Order #{order_id} has been {status}!\n\nView more orders:",
+                reply_markup=admin_keyboard(),
+                parse_mode='HTML'
+            )
+    except Exception as e:
+        print(f"❌ Error in update_order_status: {e}")
+        await query.answer("❌ Error updating order!", show_alert=True)
 
 async def notify_admin(context, order):
     """Notify admin about new order"""
@@ -970,79 +1020,85 @@ async def notify_admin(context, order):
             reply_markup=order_actions_keyboard(order[0]),
             parse_mode='HTML'
         )
+        print(f"📢 Admin notified about order #{order[0]}")
     except Exception as e:
-        logger.error(f"Failed to notify admin: {e}")
+        print(f"❌ Failed to notify admin: {e}")
 
 async def show_customer_phone(query, context, order_id):
     """Show customer phone to admin"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT phone, customer_name FROM orders WHERE id = ?", (order_id,))
-    order = cursor.fetchone()
-    conn.close()
-    
-    if order:
-        phone, name = order
-        await query.answer(f"📞 Customer: {name}\nPhone: {phone}", show_alert=True)
-    else:
-        await query.answer("Order not found!", show_alert=True)
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT phone, customer_name FROM orders WHERE id = ?", (order_id,))
+        order = cursor.fetchone()
+        conn.close()
+        
+        if order:
+            phone, name = order
+            await query.answer(f"📞 Customer: {name}\nPhone: {phone}", show_alert=True)
+        else:
+            await query.answer("Order not found!", show_alert=True)
+    except Exception as e:
+        print(f"❌ Error in show_customer_phone: {e}")
+        await query.answer("Error loading order!", show_alert=True)
 
 async def show_my_orders(query, context):
     """Show user's orders"""
-    user_id = query.from_user.id
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT id, order_code, food_name, quantity, total_price, status, created_at
-        FROM orders 
-        WHERE user_id = ? 
-        ORDER BY created_at DESC 
-        LIMIT 10
-    ''', (user_id,))
-    orders = cursor.fetchall()
-    conn.close()
-    
-    if not orders:
-        await query.edit_message_text(
-            "📭 <b>No orders yet!</b>\n\nPlace your first order!",
-            reply_markup=main_menu_keyboard(user_id == ADMIN_ID),
-            parse_mode='HTML'
-        )
-        return
-    
-    orders_text = "📋 <b>Your Recent Orders:</b>\n\n"
-    for order in orders:
-        order_id, code, food, qty, total, status, time = order
-        status_emoji = {
-            'pending': '⏳ Pending',
-            'accepted': '✅ Accepted',
-            'delivered': '🚚 Delivered',
-            'rejected': '❌ Rejected'
-        }.get(status, '📦 ' + status)
+    try:
+        user_id = query.from_user.id
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, order_code, food_name, quantity, total_price, status, created_at
+            FROM orders 
+            WHERE user_id = ? 
+            ORDER BY created_at DESC 
+            LIMIT 10
+        ''', (user_id,))
+        orders = cursor.fetchall()
+        conn.close()
         
-        orders_text += f"""
-<b>Order #{order_id}</b> ({code})
+        if not orders:
+            await query.edit_message_text(
+                "📭 No orders yet!\n\nPlace your first order!",
+                reply_markup=main_menu_keyboard(user_id == ADMIN_ID)
+            )
+            return
+        
+        orders_text = "📋 Your Recent Orders:\n\n"
+        for order in orders:
+            order_id, code, food, qty, total, status, time = order
+            status_emoji = {
+                'pending': '⏳ Pending',
+                'accepted': '✅ Accepted',
+                'delivered': '🚚 Delivered',
+                'rejected': '❌ Rejected'
+            }.get(status, '📦 ' + status)
+            
+            orders_text += f"""Order #{order_id} ({code})
 {food} (x{qty})
 Total: ${total:.2f}
 Status: {status_emoji}
 Time: {time[:16]}
 ────────────
 """
-    
-    await query.edit_message_text(
-        orders_text,
-        reply_markup=main_menu_keyboard(user_id == ADMIN_ID),
-        parse_mode='HTML'
-    )
+        
+        await query.edit_message_text(
+            orders_text,
+            reply_markup=main_menu_keyboard(user_id == ADMIN_ID)
+        )
+    except Exception as e:
+        print(f"❌ Error in show_my_orders: {e}")
+        await query.edit_message_text("❌ Error loading your orders.")
 
 async def show_my_info(query, context):
     """Show user's info"""
-    user_id = query.from_user.id
-    user_info = get_user_info(user_id)
-    
-    if not user_info or not user_info[3]:  # No phone means incomplete info
-        info_text = """
-❌ <b>No complete information saved yet.</b>
+    try:
+        user_id = query.from_user.id
+        user_info = get_user_info(user_id)
+        
+        if not user_info or not user_info[3]:  # No phone means incomplete info
+            info_text = """❌ No complete information saved yet.
 
 To place an order, you'll need to provide:
 1. Phone number
@@ -1051,75 +1107,75 @@ To place an order, you'll need to provide:
 4. Block
 5. Room (optional)
 
-<i>Start a new order to update your info!</i>
-        """
-    else:
-        info_text = f"""
-👤 <b>Your Information:</b>
+Start a new order to update your info!"""
+        else:
+            info_text = f"""👤 Your Information:
 
-📛 <b>Name:</b> {user_info[2] or 'Not set'}
-📞 <b>Phone:</b> {user_info[3] or 'Not set'}
-🏢 <b>Dorm:</b> {user_info[4] or 'Not set'}
-🏠 <b>Block:</b> {user_info[5] or 'Not set'}
-🚪 <b>Room:</b> {user_info[6] or 'Not set'}
+📛 Name: {user_info[2] or 'Not set'}
+📞 Phone: {user_info[3] or 'Not set'}
+🏢 Dorm: {user_info[4] or 'Not set'}
+🏠 Block: {user_info[5] or 'Not set'}
+🚪 Room: {user_info[6] or 'Not set'}
 
-<i>To update, start a new order.</i>
-        """
-    
-    await query.edit_message_text(
-        info_text,
-        reply_markup=main_menu_keyboard(user_id == ADMIN_ID),
-        parse_mode='HTML'
-    )
+To update, start a new order."""
+        
+        await query.edit_message_text(
+            info_text,
+            reply_markup=main_menu_keyboard(user_id == ADMIN_ID)
+        )
+    except Exception as e:
+        print(f"❌ Error in show_my_info: {e}")
+        await query.edit_message_text("❌ Error loading your info.")
 
 async def show_stats(query, context):
     """Show statistics to admin"""
-    if query.from_user.id != ADMIN_ID:
-        await query.answer("❌ Admin access required!", show_alert=True)
-        return
-    
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    # Get counts
-    cursor.execute("SELECT COUNT(*) FROM users")
-    user_count = cursor.fetchone()[0]
-    
-    cursor.execute("SELECT COUNT(*) FROM restaurants")
-    rest_count = cursor.fetchone()[0]
-    
-    cursor.execute("SELECT COUNT(*) FROM orders")
-    order_count = cursor.fetchone()[0]
-    
-    cursor.execute("SELECT COUNT(*) FROM orders WHERE status = 'pending'")
-    pending_count = cursor.fetchone()[0]
-    
-    cursor.execute("SELECT COUNT(*) FROM orders WHERE status = 'delivered'")
-    delivered_count = cursor.fetchone()[0]
-    
-    cursor.execute("SELECT SUM(total_price) FROM orders WHERE status = 'delivered'")
-    revenue = cursor.fetchone()[0] or 0
-    
-    conn.close()
-    
-    stats_text = f"""
-📈 <b>TAP&EAT Statistics</b>
+    try:
+        if query.from_user.id != ADMIN_ID:
+            await query.answer("❌ Admin access required!", show_alert=True)
+            return
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get counts
+        cursor.execute("SELECT COUNT(*) FROM users")
+        user_count = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM restaurants")
+        rest_count = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM orders")
+        order_count = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM orders WHERE status = 'pending'")
+        pending_count = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM orders WHERE status = 'delivered'")
+        delivered_count = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT SUM(total_price) FROM orders WHERE status = 'delivered'")
+        revenue = cursor.fetchone()[0] or 0
+        
+        conn.close()
+        
+        stats_text = f"""📈 TAP&EAT Statistics
 
-👥 <b>Total Users:</b> {user_count}
-🏪 <b>Restaurants:</b> {rest_count}
-📦 <b>Total Orders:</b> {order_count}
-⏳ <b>Pending Orders:</b> {pending_count}
-✅ <b>Delivered Orders:</b> {delivered_count}
-💰 <b>Total Revenue:</b> ${revenue:.2f}
+👥 Total Users: {user_count}
+🏪 Restaurants: {rest_count}
+📦 Total Orders: {order_count}
+⏳ Pending Orders: {pending_count}
+✅ Delivered Orders: {delivered_count}
+💰 Total Revenue: ${revenue:.2f}
 
-<i>Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M')}</i>
-    """
-    
-    await query.edit_message_text(
-        stats_text,
-        reply_markup=admin_keyboard(),
-        parse_mode='HTML'
-    )
+Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M')}"""
+        
+        await query.edit_message_text(
+            stats_text,
+            reply_markup=admin_keyboard()
+        )
+    except Exception as e:
+        print(f"❌ Error in show_stats: {e}")
+        await query.edit_message_text("❌ Error loading statistics.")
 
 # ===================== WEB SERVER FOR RAILWAY =====================
 app = Flask(__name__)
