@@ -3,33 +3,57 @@ import logging
 import sqlite3
 import random
 import string
-from datetime import datetime, timedelta
+from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
     MessageHandler, filters, ContextTypes
 )
-from flask import Flask, jsonify
-import threading
+from flask import Flask, Response
+from threading import Thread
 import time
-import json
-import asyncio
 
 # ===================== CONFIGURATION =====================
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8367062998:AAF0gmnN5VvLw4Vkosa89O9qK8ogrWmo7so").strip()
-ADMIN_ID = int(os.environ.get("ADMIN_ID", "6237524660"))
+# Get environment variables
+def get_bot_token():
+    """Get and clean bot token from environment"""
+    token = os.environ.get("BOT_TOKEN", "").strip()
+    
+    # Clean the token - remove any quotes, spaces, or equals signs
+    token = token.strip()
+    token = token.strip('"\'')  # Remove quotes
+    token = token.strip('=')    # Remove equals signs
+    token = token.strip()       # Strip again
+    
+    # Debug log (show first and last 5 chars only for security)
+    if token:
+        masked_token = f"{token[:10]}...{token[-5:]}"
+        print(f"🔑 Bot token loaded: {masked_token}")
+    
+    return token
+
+def get_admin_id():
+    """Get admin ID from environment"""
+    admin_id = os.environ.get("ADMIN_ID", "").strip()
+    if admin_id:
+        try:
+            return int(admin_id)
+        except ValueError:
+            print(f"⚠️ Invalid ADMIN_ID: {admin_id}, using default")
+    return 6237524660  # Default admin ID
+
+BOT_TOKEN = get_bot_token()
+ADMIN_ID = get_admin_id()
 DATABASE_FILE = "tap_eat.db"
 PORT = int(os.environ.get("PORT", 8080))
 
-print("=" * 50)
-print("🚀 TAP&EAT BOT - Starting...")
+print(f"🚀 Starting TAP&EAT Bot...")
 print(f"👑 Admin ID: {ADMIN_ID}")
 print(f"🌐 Port: {PORT}")
-print("=" * 50)
 
 # Setup logging
 logging.basicConfig(
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
@@ -100,7 +124,7 @@ def init_database():
         # Check if we need sample data
         cursor.execute("SELECT COUNT(*) FROM restaurants")
         if cursor.fetchone()[0] == 0:
-            logger.info("Adding sample restaurants and menu items...")
+            print("📝 Adding sample restaurants and menu items...")
             
             # Add sample restaurants
             sample_restaurants = [
@@ -150,9 +174,9 @@ def init_database():
         
         conn.commit()
         conn.close()
-        logger.info("✅ Database initialized successfully")
+        print("✅ Database initialized successfully")
     except Exception as e:
-        logger.error(f"❌ Database initialization failed: {e}")
+        print(f"❌ Database initialization failed: {e}")
 
 # ===================== HELPER FUNCTIONS =====================
 def get_db_connection():
@@ -183,20 +207,20 @@ def get_user_info(user_id):
 def format_order_for_admin(order):
     """Format order details for admin notification"""
     return f"""
-🚨 *NEW ORDER #{order[0]}*
+🚨 <b>NEW ORDER #{order[0]}</b>
 📦 Code: {order[1]}
 
-🍽️ {order[4]}
+🍽️ <b>{order[4]}</b>
 🏪 From: {order[3]}
 🔢 Quantity: {order[5]}
 💰 Total: ${order[6]:.2f}
 
-👤 {order[7]}
+👤 <b>{order[7]}</b>
 📞 {order[8]}
 📍 Dorm {order[9]}, Block {order[10]}{f', Room {order[11]}' if order[11] else ''}
 
 ⏰ {order[13]}
-📊 Status: *{order[12].upper()}*
+📊 Status: <b>{order[12].upper()}</b>
 """
 
 # ===================== KEYBOARDS =====================
@@ -277,20 +301,23 @@ def order_actions_keyboard(order_id):
 # ===================== COMMAND HANDLERS =====================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /start command"""
-    user = update.effective_user
-    user_id = user.id
-    username = user.username
-    full_name = f"{user.first_name} {user.last_name or ''}".strip()
-    
-    logger.info(f"👤 User {user_id} ({full_name}) started the bot")
-    
-    # Save user to database
-    save_user(user_id, username, full_name)
-    
-    # Check if admin
-    is_admin = (user_id == ADMIN_ID)
-    
-    welcome_text = f"""🎓 Welcome to TAP&EAT, {user.first_name}!
+    try:
+        user = update.effective_user
+        user_id = user.id
+        username = user.username
+        full_name = f"{user.first_name} {user.last_name or ''}".strip()
+        
+        print(f"👤 User {user_id} ({full_name}) started the bot")
+        
+        # Save user to database
+        save_user(user_id, username, full_name)
+        
+        # Check if admin
+        is_admin = (user_id == ADMIN_ID)
+        print(f"🔐 Is admin: {is_admin}")
+        
+        # SIMPLIFIED WELCOME MESSAGE - NO HTML FORMATTING
+        welcome_text = f"""🎓 Welcome to TAP&EAT, {user.first_name}!
 
 🍔 Your Campus Food Delivery Bot
 
@@ -305,14 +332,24 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ⏰ 24/7 Ordering Available
 
 Start by tapping '🍽️ Order Food' below!"""
-    
-    if is_admin:
-        welcome_text += "\n\n👑 Admin privileges activated!"
-    
-    await update.message.reply_text(
-        welcome_text,
-        reply_markup=main_menu_keyboard(is_admin)
-    )
+        
+        if is_admin:
+            welcome_text += "\n\n👑 Admin privileges activated!"
+        
+        # Send message without HTML parsing first
+        await update.message.reply_text(
+            welcome_text,
+            reply_markup=main_menu_keyboard(is_admin)
+        )
+        print(f"✅ Sent welcome message to user {user_id}")
+        
+    except Exception as e:
+        print(f"❌ Error in start command: {e}")
+        # Try sending a simple error message
+        try:
+            await update.message.reply_text("Welcome to TAP&EAT! Please use the menu buttons below:")
+        except:
+            pass
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /help command"""
@@ -342,7 +379,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_admin = (user_id == ADMIN_ID)
     
     try:
-        logger.info(f"🔄 Button pressed by {user_id}: {data}")
+        print(f"🔄 Button pressed by {user_id}: {data}")
         
         # Main menu actions
         if data == 'order_food':
@@ -370,7 +407,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if is_admin:
                 await query.edit_message_text(
                     "👑 Admin Panel\n\nManage orders and view stats:",
-                    reply_markup=admin_keyboard()
+                    reply_markup=admin_keyboard(),
+                    parse_mode='HTML'
                 )
             else:
                 await query.answer("❌ Admin access required!", show_alert=True)
@@ -428,7 +466,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await show_customer_phone(query, context, order_id)
     
     except Exception as e:
-        logger.error(f"❌ Error in button handler: {e}")
+        print(f"❌ Error in button handler: {e}")
         await query.answer("❌ An error occurred. Please try again.", show_alert=True)
 
 async def show_restaurants(query, context):
@@ -455,7 +493,7 @@ async def show_restaurants(query, context):
             reply_markup=restaurants_keyboard()
         )
     except Exception as e:
-        logger.error(f"❌ Error in show_restaurants: {e}")
+        print(f"❌ Error in show_restaurants: {e}")
         await query.edit_message_text("❌ Error loading restaurants. Please try again.")
 
 async def show_menu(query, context, restaurant_id):
@@ -495,7 +533,7 @@ async def show_menu(query, context, restaurant_id):
             reply_markup=menu_keyboard(restaurant_id)
         )
     except Exception as e:
-        logger.error(f"❌ Error in show_menu: {e}")
+        print(f"❌ Error in show_menu: {e}")
         await query.answer("Error loading menu!", show_alert=True)
 
 async def show_quantity(query, context, item_id):
@@ -522,7 +560,7 @@ async def show_quantity(query, context, item_id):
             reply_markup=quantity_keyboard(item_id, restaurant_id)
         )
     except Exception as e:
-        logger.error(f"❌ Error in show_quantity: {e}")
+        print(f"❌ Error in show_quantity: {e}")
         await query.answer("Error loading item!", show_alert=True)
 
 async def process_order(query, context):
@@ -577,7 +615,7 @@ async def process_order(query, context):
             # Show order summary with saved info
             await show_order_summary(query, context, user_info)
     except Exception as e:
-        logger.error(f"❌ Error in process_order: {e}")
+        print(f"❌ Error in process_order: {e}")
         await query.answer("Error processing order!", show_alert=True)
 
 async def ask_user_info_start(query, context):
@@ -589,10 +627,10 @@ async def ask_user_info_start(query, context):
         context.user_data['awaiting_info'] = True
         context.user_data['info_step'] = 'phone'
     except Exception as e:
-        logger.error(f"❌ Error in ask_user_info_start: {e}")
+        print(f"❌ Error in ask_user_info_start: {e}")
 
 async def show_order_summary(query, context, user_info):
-    """Show order summary for confirmation"""
+    """Show order summary for confirmation - SIMPLE VERSION WITHOUT BUTTONS"""
     try:
         item_name = context.user_data.get('item_name', 'Unknown')
         price = context.user_data.get('price', 0)
@@ -623,7 +661,7 @@ Please type 1 or 2:"""
         # Set state for confirmation
         context.user_data['awaiting_confirmation'] = True
     except Exception as e:
-        logger.error(f"❌ Error in show_order_summary: {e}")
+        print(f"❌ Error in show_order_summary: {e}")
 
 # ===================== MESSAGE HANDLERS =====================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -633,7 +671,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = update.message.text.strip()
         is_admin = (user_id == ADMIN_ID)
         
-        logger.info(f"📨 Message from {user_id}: {text}")
+        print(f"📨 Message from {user_id}: {text}")
         
         # Check if we're collecting user info
         if context.user_data.get('awaiting_info'):
@@ -751,11 +789,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         
     except Exception as e:
-        logger.error(f"❌ Error in handle_message: {e}")
+        print(f"❌ Error in handle_message: {e}")
         await update.message.reply_text("❌ An error occurred. Please try /start again.")
 
 async def show_order_summary_message(update, context, user_info):
-    """Show order summary in message"""
+    """Show order summary in message - SIMPLE VERSION WITHOUT BUTTONS"""
     try:
         item_name = context.user_data.get('item_name', 'Unknown')
         price = context.user_data.get('price', 0)
@@ -786,7 +824,7 @@ Please type 1 or 2:"""
         # Set state for confirmation
         context.user_data['awaiting_confirmation'] = True
     except Exception as e:
-        logger.error(f"❌ Error in show_order_summary_message: {e}")
+        print(f"❌ Error in show_order_summary_message: {e}")
         await update.message.reply_text("❌ Error showing order summary. Please try again.")
 
 async def confirm_order(update, context):
@@ -872,10 +910,10 @@ Admin has been notified. You'll receive updates soon!"""
         
         # Clear user data
         context.user_data.clear()
-        logger.info(f"✅ Order #{order_id} placed by user {user_id}")
+        print(f"✅ Order #{order_id} placed by user {user_id}")
         
     except Exception as e:
-        logger.error(f"❌ Error in confirm_order: {e}")
+        print(f"❌ Error in confirm_order: {e}")
         await update.message.reply_text("❌ Error placing order. Please try again.")
 
 # ===================== ADMIN FUNCTIONS =====================
@@ -896,7 +934,8 @@ async def show_admin_orders(query, context):
         if not orders:
             await query.edit_message_text(
                 "📭 No pending orders!\n\nAll orders are processed.",
-                reply_markup=admin_keyboard()
+                reply_markup=admin_keyboard(),
+                parse_mode='HTML'
             )
             return
         
@@ -904,14 +943,15 @@ async def show_admin_orders(query, context):
         order = orders[0]
         await query.edit_message_text(
             format_order_for_admin(order),
-            reply_markup=order_actions_keyboard(order[0])
+            reply_markup=order_actions_keyboard(order[0]),
+            parse_mode='HTML'
         )
         
         # Store remaining orders
         if len(orders) > 1:
             context.user_data['pending_orders'] = orders[1:]
     except Exception as e:
-        logger.error(f"❌ Error in show_admin_orders: {e}")
+        print(f"❌ Error in show_admin_orders: {e}")
         await query.edit_message_text("❌ Error loading orders.")
 
 async def update_order_status(query, context, order_id, status):
@@ -949,7 +989,7 @@ async def update_order_status(query, context, order_id, status):
                     f"📢 Order Update!\n\nOrder #{order_id} ({order_code}) has been {status_msg}\n\nThank you for using TAP&EAT!"
                 )
             except Exception as e:
-                logger.warning(f"⚠️ Could not notify user {user_id}: {e}")
+                print(f"⚠️ Could not notify user {user_id}: {e}")
         
         await query.answer(f"✅ Order {status}!")
         
@@ -958,15 +998,17 @@ async def update_order_status(query, context, order_id, status):
             next_order = context.user_data['pending_orders'].pop(0)
             await query.edit_message_text(
                 format_order_for_admin(next_order),
-                reply_markup=order_actions_keyboard(next_order[0])
+                reply_markup=order_actions_keyboard(next_order[0]),
+                parse_mode='HTML'
             )
         else:
             await query.edit_message_text(
                 f"✅ Order #{order_id} has been {status}!\n\nView more orders:",
-                reply_markup=admin_keyboard()
+                reply_markup=admin_keyboard(),
+                parse_mode='HTML'
             )
     except Exception as e:
-        logger.error(f"❌ Error in update_order_status: {e}")
+        print(f"❌ Error in update_order_status: {e}")
         await query.answer("❌ Error updating order!", show_alert=True)
 
 async def notify_admin(context, order):
@@ -975,11 +1017,12 @@ async def notify_admin(context, order):
         await context.bot.send_message(
             ADMIN_ID,
             format_order_for_admin(order),
-            reply_markup=order_actions_keyboard(order[0])
+            reply_markup=order_actions_keyboard(order[0]),
+            parse_mode='HTML'
         )
-        logger.info(f"📢 Admin notified about order #{order[0]}")
+        print(f"📢 Admin notified about order #{order[0]}")
     except Exception as e:
-        logger.error(f"❌ Failed to notify admin: {e}")
+        print(f"❌ Failed to notify admin: {e}")
 
 async def show_customer_phone(query, context, order_id):
     """Show customer phone to admin"""
@@ -996,7 +1039,7 @@ async def show_customer_phone(query, context, order_id):
         else:
             await query.answer("Order not found!", show_alert=True)
     except Exception as e:
-        logger.error(f"❌ Error in show_customer_phone: {e}")
+        print(f"❌ Error in show_customer_phone: {e}")
         await query.answer("Error loading order!", show_alert=True)
 
 async def show_my_orders(query, context):
@@ -1045,7 +1088,7 @@ Time: {time[:16]}
             reply_markup=main_menu_keyboard(user_id == ADMIN_ID)
         )
     except Exception as e:
-        logger.error(f"❌ Error in show_my_orders: {e}")
+        print(f"❌ Error in show_my_orders: {e}")
         await query.edit_message_text("❌ Error loading your orders.")
 
 async def show_my_info(query, context):
@@ -1081,7 +1124,7 @@ To update, start a new order."""
             reply_markup=main_menu_keyboard(user_id == ADMIN_ID)
         )
     except Exception as e:
-        logger.error(f"❌ Error in show_my_info: {e}")
+        print(f"❌ Error in show_my_info: {e}")
         await query.edit_message_text("❌ Error loading your info.")
 
 async def show_stats(query, context):
@@ -1131,15 +1174,15 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M')}"""
             reply_markup=admin_keyboard()
         )
     except Exception as e:
-        logger.error(f"❌ Error in show_stats: {e}")
+        print(f"❌ Error in show_stats: {e}")
         await query.edit_message_text("❌ Error loading statistics.")
 
-# ===================== FLASK WEB SERVER =====================
+# ===================== WEB SERVER FOR RAILWAY =====================
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    """Main health check endpoint for Railway"""
+    """Health check endpoint - root"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -1148,50 +1191,46 @@ def home():
         cursor.execute("SELECT COUNT(*) FROM orders")
         order_count = cursor.fetchone()[0]
         conn.close()
-        
-        return {
-            "status": "online",
-            "service": "tap-eat-bot",
-            "users": user_count,
-            "orders": order_count,
-            "timestamp": datetime.now().isoformat()
-        }, 200
+        return Response(
+            f"🤖 TAP&EAT Bot is running!\n\n👥 Users: {user_count}\n📦 Orders: {order_count}\n✅ Status: Online",
+            status=200,
+            mimetype='text/plain'
+        )
     except Exception as e:
-        logger.error(f"Health check error: {e}")
-        return {"status": "error", "message": str(e)}, 500
+        print(f"Health check error: {e}")
+        return Response(
+            "🤖 TAP&EAT Bot is running!\n⚠️ Database connection issue",
+            status=200,
+            mimetype='text/plain'
+        )
 
 @app.route('/health')
 def health():
-    """Simple health check"""
-    return {"status": "healthy"}, 200
-
-@app.route('/ping')
-def ping():
-    """Simple ping endpoint"""
-    return "pong", 200
+    """Health check endpoint for Railway"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1")
+        conn.close()
+        return {"status": "healthy", "service": "tap-eat-bot", "timestamp": datetime.now().isoformat()}, 200
+    except Exception as e:
+        print(f"Health check error: {e}")
+        return {"status": "unhealthy", "error": str(e)}, 500
 
 def run_flask():
-    """Run Flask server"""
-    logger.info(f"🌐 Starting Flask server on port {PORT}")
-    app.run(host='0.0.0.0', port=PORT, debug=False, threaded=True)
+    """Run Flask server in a separate thread"""
+    print(f"🌐 Starting Flask server on port {PORT}...")
+    app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
 
 # ===================== MAIN FUNCTION =====================
-async def main():
-    """Main async function to run the bot"""
+def main():
+    """Main function to start the bot"""
     # Initialize database
-    logger.info("📊 Initializing database...")
+    print("📊 Initializing database...")
     init_database()
     
-    # Start Flask server in background thread
-    logger.info("🚀 Starting Flask server in background...")
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-    
-    # Wait for Flask to start
-    await asyncio.sleep(3)
-    
-    # Create bot application
-    logger.info("🤖 Creating bot application...")
+    # Create application
+    print("🤖 Creating bot application...")
     application = Application.builder().token(BOT_TOKEN).build()
     
     # Add command handlers
@@ -1204,17 +1243,31 @@ async def main():
     # Add message handler
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    # Start bot polling
-    logger.info("✅ Starting bot polling...")
-    logger.info("🎉 TAP&EAT Bot is now running!")
-    logger.info("=" * 50)
+    # Start Flask server in background thread
+    print("🚀 Starting Flask server...")
+    from threading import Thread
+    flask_thread = Thread(target=run_flask, daemon=True)
+    flask_thread.start()
     
-    await application.run_polling(drop_pending_updates=True)
-
-def run_bot():
-    """Run the bot in asyncio event loop"""
-    asyncio.run(main())
+    # Give Flask time to start
+    time.sleep(2)
+    
+    # Start bot
+    print("✅ Starting bot polling...")
+    print("🎉 Bot is now running! Press Ctrl+C to stop.")
+    
+    # Run bot with error handling
+    try:
+        application.run_polling(
+            drop_pending_updates=True,
+            allowed_updates=Update.ALL_TYPES,
+            close_loop=False
+        )
+    except Exception as e:
+        print(f"❌ Bot error: {e}")
+        print("🔄 Restarting in 10 seconds...")
+        time.sleep(10)
+        main()
 
 if __name__ == "__main__":
-    # Start the bot
-    run_bot()
+    main()
