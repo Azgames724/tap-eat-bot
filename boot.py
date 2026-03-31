@@ -17,7 +17,7 @@ import time
 # Get environment variables
 def get_bot_token():
     """Get and clean bot token from environment"""
-    token = os.environ.get("BOT_TOKEN", "").strip()
+    token = os.environ.get("8633260754:AAE_TBIA8IwKwYYrEMztqmsoqJpzx7UB3ys", "").strip()
     
     # Clean the token - remove any quotes, spaces, or equals signs
     token = token.strip()
